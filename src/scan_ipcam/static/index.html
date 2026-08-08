@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>scan-ipcam</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        margin: 0 auto;
+        max-width: 960px;
+        padding: 2rem;
+        line-height: 1.5;
+      }
+      button {
+        font: inherit;
+        padding: 0.6rem 1rem;
+        cursor: pointer;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1.5rem;
+      }
+      th,
+      td {
+        border-bottom: 1px solid #8884;
+        padding: 0.6rem;
+        text-align: left;
+        vertical-align: top;
+      }
+      .muted {
+        opacity: 0.7;
+      }
+      #status {
+        margin-top: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>scan-ipcam</h1>
+    <p class="muted">
+      Discover IP cameras on your local network using port scanning and ONVIF
+      discovery.
+    </p>
+    <button id="scan-btn">Scan network</button>
+    <div id="status" class="muted">Ready.</div>
+    <table id="results" hidden>
+      <thead>
+        <tr>
+          <th>IP</th>
+          <th>Hostname</th>
+          <th>Source</th>
+          <th>Ports</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <script>
+      const scanBtn = document.getElementById("scan-btn");
+      const status = document.getElementById("status");
+      const table = document.getElementById("results");
+      const tbody = table.querySelector("tbody");
+
+      scanBtn.addEventListener("click", async () => {
+        scanBtn.disabled = true;
+        status.textContent = "Scanning local network...";
+        table.hidden = true;
+        tbody.innerHTML = "";
+
+        try {
+          const response = await fetch("/api/scan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ include_onvif: true }),
+          });
+          if (!response.ok) {
+            throw new Error(`Scan failed with status ${response.status}`);
+          }
+          const payload = await response.json();
+          status.textContent = `Found ${payload.count} potential camera(s).`;
+          for (const device of payload.devices) {
+            const row = document.createElement("tr");
+            const ports = device.open_ports
+              .map((port) => `${port.port}/${port.service}`)
+              .join(", ");
+            const details = [
+              device.onvif ? "ONVIF" : null,
+              device.manufacturer,
+              device.model,
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            row.innerHTML = `
+              <td>${device.ip}</td>
+              <td>${device.hostname || "—"}</td>
+              <td>${device.source}</td>
+              <td>${ports || "—"}</td>
+              <td>${details || "—"}</td>
+            `;
+            tbody.appendChild(row);
+          }
+          table.hidden = payload.count === 0;
+        } catch (error) {
+          status.textContent = error.message;
+        } finally {
+          scanBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
